@@ -43,7 +43,7 @@ namespace CommNetConstellation.CommNetLayer
         public string stationName
         {
             get { return (this.OptionalName.Length == 0)? this.displaynodeName : this.OptionalName; }
-            set { this.OptionalName = value; }
+            set { this.OptionalName = value; this.comm.name = this.comm.displayName = value; }
         }
 
         /// <summary>
@@ -402,6 +402,11 @@ namespace CommNetConstellation.CommNetLayer
                 return;
             }
 
+            if (this.comm != null && (this.comm.displayName.Length < 1 || this.comm.name.Length < 1))
+            {
+                this.comm.name = this.comm.displayName = stationName; //required for visual sequence of connected nodes
+            }
+
             // Obtain Tech Level of Tracking Station in KCS
             if (this.isKSC)
             {
@@ -450,7 +455,7 @@ namespace CommNetConstellation.CommNetLayer
         /// Comment: Subclassing GameVariables.Instance.GetDSNRange to just change the ranges is too excessive at this point.
         public double GetDSNRange(short level)
         {
-            double power;
+            double power = 0.0;
             if (this.isKSC)
             {
                 power = CNCSettings.Instance.KSCStationPowers[level - 1];
@@ -459,7 +464,7 @@ namespace CommNetConstellation.CommNetLayer
             {
                 if (level == 0)
                 {
-                    power = 0;
+                    power = 0.0;
                 }
                 else
                 {
@@ -475,6 +480,12 @@ namespace CommNetConstellation.CommNetLayer
         /// </summary>
         protected override void Update()
         {
+            if (HighLogic.CurrentGame == null)
+                return;
+
+            if (!(HighLogic.LoadedScene == GameScenes.FLIGHT || HighLogic.LoadedScene == GameScenes.TRACKSTATION))
+                return;
+
             if (this.comm != null && this.body != null)
             {
                 this.comm.precisePosition = this.body.GetWorldSurfacePosition(this.lat, this.lon, this.alt);
@@ -485,6 +496,8 @@ namespace CommNetConstellation.CommNetLayer
                 {
                     this.nodeTransform.position = this.comm.precisePosition;
                 }
+
+                this.refresh();
             }
         }
 

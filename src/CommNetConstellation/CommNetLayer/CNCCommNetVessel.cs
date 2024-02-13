@@ -27,15 +27,20 @@ namespace CommNetConstellation.CommNetLayer
     public class CNConstellationAntennaModule : PartModule
     {
         [KSPField(isPersistant = true)] public short Frequency = CNCSettings.Instance.PublicRadioFrequency;
+        [KSPField(isPersistant = true)] public short RelayFrequency = CNCSettings.Instance.PublicRadioFrequency;
         [KSPField(isPersistant = true)] protected string OptionalName = "";
         [KSPField(isPersistant = true)] public bool InUse = true;
+        [KSPField(isPersistant = true)] public bool isRelay = false;
 
         [KSPField(isPersistant = true)] public double CosAngle = -1.0; //by default, disabled until third-party mod enables it via MM
         [KSPField] public Guid AntennaTarget = Guid.Empty; //TODO: implement targeting
 
         public String Name
         {
-            get { return (this.OptionalName.Length == 0) ? this.part.partInfo.title : this.OptionalName; }
+            get {
+                return (this.OptionalName.Length == 0) ?
+                        this.part.partInfo.title :
+                        this.OptionalName; }
             set { this.OptionalName = value; }
         }
 
@@ -52,6 +57,7 @@ namespace CommNetConstellation.CommNetLayer
     public class CNCAntennaPartInfo
     {
         public short frequency;
+        public short relayfrequency;
         public string name;
         public double antennaPower;
         public double antennaCombinableExponent;
@@ -59,7 +65,8 @@ namespace CommNetConstellation.CommNetLayer
         public AntennaType antennaType;
         public Part partReference;
         public ProtoPartSnapshot partSnapshotReference = null;
-        public bool inUse; // selected by user to be used
+        public bool inUse;
+        public bool isRelay; // is Antenna a relay?
         public bool canComm; //fixed and deployable antennas
         public Guid Target;
         public double CosAngle;
@@ -83,6 +90,7 @@ namespace CommNetConstellation.CommNetLayer
         [Persistent] private List<short> FreqDictionaryKeys = new List<short>();
         [Persistent] private List<double> FreqDictionaryValues = new List<double>();
         [Persistent] public FrequencyListOperation FreqListOperation = FrequencyListOperation.AutoBuild; // initial value
+        [Persistent] public bool vesselHasRelay = false; // initial value
 
         //for low-gc operations
         protected short[] sorted_frequency_array;
@@ -233,6 +241,7 @@ namespace CommNetConstellation.CommNetLayer
         /// </summary>
         protected List<CNCAntennaPartInfo> readAntennaData()
         {
+            CNCLog.Debug("======================================= readAntennaData  =======================================");
             List<CNCAntennaPartInfo> antennas = new List<CNCAntennaPartInfo>();
             int numParts = (!this.vessel.loaded) ? this.vessel.protoVessel.protoPartSnapshots.Count : this.vessel.Parts.Count;
 
@@ -269,34 +278,54 @@ namespace CommNetConstellation.CommNetLayer
 
                             if (partModuleSnapshot == null)
                             {
+                                CNCLog.Debug("readAntennaData: !Vessel.loaded: ==null");
                                 //initialise and add to proto part
                                 ProtoPartModuleSnapshot newCNCAntMod = new ProtoPartModuleSnapshot(thisPartModule);
                                 newCNCAntMod.moduleValues.SetValue("Frequency", CNCSettings.Instance.PublicRadioFrequency);
+                                newCNCAntMod.moduleValues.SetValue("RelayFrequency", CNCSettings.Instance.PublicRadioFrequency);
                                 newCNCAntMod.moduleValues.SetValue("OptionalName", "");
                                 newCNCAntMod.moduleValues.SetValue("InUse", true);
+                                newCNCAntMod.moduleValues.SetValue("isRelay", false);
                                 newCNCAntMod.moduleValues.SetValue("CosAngle", 0.0);
                                 partSnapshot.modules.Add(newCNCAntMod);
 
                                 partModuleSnapshot = partSnapshot.FindModule(thisPartModule, moduleIndex);
-                                if(partModuleSnapshot == null) //something goes wrong
+                                if (partModuleSnapshot == null) //something goes wrong
                                 {
                                     CNCLog.Error("Unable to add CNConstellationAntennaModule to proto part snapshot of '{0}'!", this.vessel.vesselName);
                                     break;
                                 }
                             }
+                            CNCLog.Debug("readAntennaData: !Vessel.loaded: relayfrequency");
+                            CNCLog.Debug("readAntennaData: !Vessel.loaded: relayfrequency {0}>", partModuleSnapshot.moduleValues.GetValue("RelayFrequency"));
+                            CNCLog.Debug("readAntennaData: !Vessel.loaded: relayfrequency {0}>", short.Parse(partModuleSnapshot.moduleValues.GetValue("RelayFrequency")));
 
                             newAntennaPartInfo.frequency = short.Parse(partModuleSnapshot.moduleValues.GetValue("Frequency"));
+                            newAntennaPartInfo.relayfrequency = short.Parse(partModuleSnapshot.moduleValues.GetValue("RelayFrequency"));
                             string oname = partModuleSnapshot.moduleValues.GetValue("OptionalName");
                             newAntennaPartInfo.name = (oname.Length == 0) ? partSnapshot.partInfo.title : oname;
                             newAntennaPartInfo.inUse = bool.Parse(partModuleSnapshot.moduleValues.GetValue("InUse"));
+                            newAntennaPartInfo.isRelay = bool.Parse(partModuleSnapshot.moduleValues.GetValue("isRelay"));
                             newAntennaPartInfo.CosAngle = double.Parse(partModuleSnapshot.moduleValues.GetValue("CosAngle"));
+
+                            CNCLog.Debug("readAntennaData: !Vessel.loaded: newAntennaPartInfo {0}>", newAntennaPartInfo);
                         }
                         else
                         {
                             CNConstellationAntennaModule antennaMod = (CNConstellationAntennaModule)thisPartModule;
                             newAntennaPartInfo.frequency = antennaMod.Frequency;
+                            newAntennaPartInfo.relayfrequency = antennaMod.RelayFrequency;
                             newAntennaPartInfo.name = antennaMod.Name;
                             newAntennaPartInfo.inUse = antennaMod.InUse;
+                            newAntennaPartInfo.isRelay = antennaMod.isRelay;
+
+                            CNCLog.Debug("vesselLoaded  TRUE: newAntennaPartInfo.freq {0}>", newAntennaPartInfo.frequency);
+                            CNCLog.Debug("vesselLoaded  TRUE: antennaMod.Frequency {0}>", antennaMod.Frequency);
+                            CNCLog.Debug("vesselLoaded  TRUE: antennaMod.relayfrequency {0}>", antennaMod.RelayFrequency);
+                            CNCLog.Debug("vesselLoaded  TRUE: antennaMod.isRelay {0}>", antennaMod.isRelay);
+                            CNCLog.Debug("vesselLoaded  TRUE: newAntennaPartInfo.Frequency {0}>", newAntennaPartInfo.frequency);
+                            CNCLog.Debug("vesselLoaded  TRUE: newAntennaPartInfo.relayfrequency {0}>", newAntennaPartInfo.relayfrequency);
+                            CNCLog.Debug("vesselLoaded  TRUE: newAntennaPartInfo.isRelay {0}>", newAntennaPartInfo.isRelay);
                         }
 
                         populatedAntennaInfo = true;
@@ -320,12 +349,72 @@ namespace CommNetConstellation.CommNetLayer
                     }
                 }
 
+                if  (newAntennaPartInfo.antennaType  == AntennaType.RELAY)
+                {
+                    newAntennaPartInfo.isRelay = true;
+                }
+
                 if (populatedAntennaInfo) // valid info?
                 {
-                    antennas.Add(newAntennaPartInfo);
-                    CNCLog.Debug("CommNet Vessel '{0}' has antenna '{1}' of {2} and {3} power (w/o range modifier)", this.Vessel.GetName(), newAntennaPartInfo.name, newAntennaPartInfo.frequency, newAntennaPartInfo.antennaPower);
+                    CNCLog.Debug("readAntennaData: populatedAntennaInfo");
+                    if (newAntennaPartInfo.isRelay)
+                    {
+                        CNCLog.Debug("readAntennaData: populatedAntennaInfo: newAntenna.isRelay");
+                        CNCAntennaPartInfo relayInfo = new CNCAntennaPartInfo();
+
+
+                        relayInfo.name = newAntennaPartInfo.name + "_Relay";
+                        relayInfo.antennaPower = newAntennaPartInfo.antennaPower;
+                        relayInfo.antennaCombinable = newAntennaPartInfo.antennaCombinable;
+                        relayInfo.antennaCombinableExponent = newAntennaPartInfo.antennaCombinableExponent;
+                        relayInfo.antennaType = newAntennaPartInfo.antennaType;
+                        relayInfo.partReference = newAntennaPartInfo.partReference;
+                        relayInfo.partSnapshotReference = newAntennaPartInfo.partSnapshotReference;
+                        relayInfo.canComm = newAntennaPartInfo.canComm;
+                        relayInfo.inUse = newAntennaPartInfo.inUse;
+
+                        relayInfo.frequency = newAntennaPartInfo.relayfrequency;
+                        relayInfo.relayfrequency = newAntennaPartInfo.frequency;
+
+                        newAntennaPartInfo.isRelay = false;
+                        relayInfo.isRelay = true;
+
+                        this.vesselHasRelay = true;
+
+                        antennas.Add(relayInfo);
+                        antennas.Add(newAntennaPartInfo);
+
+                        CNCLog.Debug("readAntennaData: populatedAntennaInfo: newAntenna: isrelay:{0}:",  newAntennaPartInfo.isRelay);
+                        CNCLog.Debug("readAntennaData: populatedAntennaInfo: relayinfo: isrelay:{0}:", relayInfo.isRelay);
+                        CNCLog.Debug("readAntennaData: populatedAntennaInfo: CHECKING BOTH:");
+                        CNCLog.Debug("antennaCombinable: newAntenna:  <{0}>   == relayInfo: <{1}>", newAntennaPartInfo.antennaCombinable, relayInfo.antennaCombinable);
+                        CNCLog.Debug("antennaCombinableExponent: newAntenna:  <{0}>   == relayInfo: <{1}>", newAntennaPartInfo.antennaCombinableExponent, relayInfo.antennaCombinableExponent);
+                        CNCLog.Debug("frequency: newAntenna:  <{0}>   == relayInfo: <{1}>", newAntennaPartInfo.frequency, relayInfo.frequency);
+                        CNCLog.Debug("name: newAntenna:  <{0}>   == relayInfo: <{1}>", newAntennaPartInfo.name, relayInfo.name);
+                        CNCLog.Debug("relayfrequency: newAntenna:  <{0}>   == relayInfo: <{1}>", newAntennaPartInfo.relayfrequency, relayInfo.relayfrequency);
+                        CNCLog.Debug("antennaPower: newAntenna:  <{0}>   == relayInfo: <{1}>", newAntennaPartInfo.antennaPower, relayInfo.antennaPower);
+                        CNCLog.Debug("antennaType: newAntenna:  <{0}>   == relayInfo: <{1}>", newAntennaPartInfo.antennaType, relayInfo.antennaType);
+                        CNCLog.Debug("isRelay: newAntenna:  <{0}>   == relayInfo: <{1}>", newAntennaPartInfo.isRelay, relayInfo.isRelay);
+                    }
+                    else
+                    {
+                        CNCLog.Debug("readAntennaData: populatedAntennaInfo: not newAntenna.isRelay");
+                        antennas.Add(newAntennaPartInfo);
+                    }
+
+                    CNCLog.Debug("CommNet Vessel '{0}' has antenna '{1}' of {2} and {3} power (w/o range modifier)",
+                        this.Vessel.GetName(),
+                        newAntennaPartInfo.name,
+                        newAntennaPartInfo.frequency,
+                        newAntennaPartInfo.antennaPower);
+
+                    CNCLog.Debug("CommNet Vessel '{0}' is relay? '{1}', with '{2}' frequency.",
+                        newAntennaPartInfo.name,
+                        newAntennaPartInfo.isRelay,
+                        newAntennaPartInfo.relayfrequency);
                 }
             }
+            CNCLog.Debug("readAntennaData: antennas size<{0}>", antennas.Count);
 
             return antennas;
         }
@@ -410,14 +499,21 @@ namespace CommNetConstellation.CommNetLayer
         /// </summary>
         protected Dictionary<short, double> buildFrequencyList(List<CNCAntennaPartInfo> antennas)
         {
+            CNCLog.Debug("======================================= buildFrequencyList  =======================================");
             Dictionary<short, List<double>> combinepowerFreqDict = new Dictionary<short, List<double>>();
             Dictionary<short, List<double>> expoFreqDict = new Dictionary<short, List<double>>();
             Dictionary<short, double> noncombinepowerDict = new Dictionary<short, double>();
             List<short> allFreqs = new List<short>();
 
+            CNCLog.Debug("buildFreqList: ant count: {0}>", antennas.Count);
             //read each antenna
             for (int i=0; i<antennas.Count; i++)
             {
+
+                CNCLog.Debug("buildFreqList: antenna {0}, name {1}", i, antennas[i].name);
+                CNCLog.Debug("buildFreqList: antenna {0}, frequency {1}", i, antennas[i].frequency);
+                CNCLog.Debug("buildFreqList: antenna {0}, antennaType {1}", i, antennas[i].antennaType);
+                CNCLog.Debug("buildFreqList: antenna {0}, isRelay {1}", i, antennas[i].isRelay);
                 if (!antennas[i].inUse || !antennas[i].canComm) // deselected or retracted
                     continue;
 
@@ -691,17 +787,38 @@ namespace CommNetConstellation.CommNetLayer
                 return;
             }
 
-            partInfo.frequency = newFrequency;
+            bool updateRelay = partInfo.isRelay;
+            CNCLog.Debug("updateFreq: starting:   updaterelay {0}", updateRelay);
 
-            if (this.Vessel.loaded)
+            if (updateRelay)
             {
-                partInfo.partReference.FindModuleImplementing<CNConstellationAntennaModule>().Frequency = newFrequency;
+                CNCLog.Debug("updateFreq: starting:   updaterelay true");
+                partInfo.relayfrequency = newFrequency;
+
+                if (this.Vessel.loaded)
+                {
+                    partInfo.partReference.FindModuleImplementing<CNConstellationAntennaModule>().RelayFrequency = newFrequency;
+                }
+                else
+                {
+                    var cncAntMod = partInfo.partSnapshotReference.FindModule("CNConstellationAntennaModule");
+                    if(cncAntMod != null) cncAntMod.moduleValues.SetValue("RelayFrequency", newFrequency);
+                }
             }
-            else
+            else 
             {
-                var cncAntMod = partInfo.partSnapshotReference.FindModule("CNConstellationAntennaModule");
-                if(cncAntMod != null) cncAntMod.moduleValues.SetValue("Frequency", newFrequency);
-            }
+                partInfo.frequency = newFrequency;
+
+                if (this.Vessel.loaded)
+                {
+                    partInfo.partReference.FindModuleImplementing<CNConstellationAntennaModule>().Frequency = newFrequency;
+                }
+                else
+                {
+                    var cncAntMod = partInfo.partSnapshotReference.FindModule("CNConstellationAntennaModule");
+                    if(cncAntMod != null) cncAntMod.moduleValues.SetValue("Frequency", newFrequency);
+                }
+             }
 
             CNCLog.Verbose("Update the antenna of CommNet vessel '{0}' to {1}", this.Vessel.GetName(), newFrequency);
         }
@@ -717,19 +834,29 @@ namespace CommNetConstellation.CommNetLayer
                 return;
             }
 
+            CNCLog.Debug("replace ALL");
+
             if (this.Vessel.loaded)
             {
                 List<CNConstellationAntennaModule> mods = this.Vessel.FindPartModulesImplementing<CNConstellationAntennaModule>().FindAll(x => x.Frequency == oldFrequency);
+                List<CNConstellationAntennaModule> modsRelay = this.Vessel.FindPartModulesImplementing<CNConstellationAntennaModule>().FindAll(x => x.RelayFrequency == oldFrequency);
+
                 for (int i = 0; i < mods.Count; i++)
                     mods[i].Frequency = newFrequency;
+
+                for (int i = 0; i < modsRelay.Count; i++)
+                    modsRelay[i].RelayFrequency = newFrequency;
             }
             else
             {
                 for (int i = 0; i < this.vessel.protoVessel.protoPartSnapshots.Count; i++)
                 {
                     ProtoPartModuleSnapshot cncAntMod = this.vessel.protoVessel.protoPartSnapshots[i].FindModule("CNConstellationAntennaModule");
+
                     if (cncAntMod != null && short.Parse(cncAntMod.moduleValues.GetValue("Frequency")) == oldFrequency)
                         cncAntMod.moduleValues.SetValue("Frequency", newFrequency);
+                    if (cncAntMod != null && short.Parse(cncAntMod.moduleValues.GetValue("RelayFrequency")) == oldFrequency)
+                        cncAntMod.moduleValues.SetValue("RelayFrequency", newFrequency);
                 }
             }
 
@@ -759,7 +886,7 @@ namespace CommNetConstellation.CommNetLayer
             else
             {
                 var cncAntMod = partInfo.partSnapshotReference.FindModule("CNConstellationAntennaModule");
-                if(cncAntMod != null) cncAntMod.moduleValues.SetValue("InUse", inUse);
+                if (cncAntMod != null) cncAntMod.moduleValues.SetValue("InUse", inUse);
             }
 
             CNCLog.Verbose("Set the antenna '{0}' of CommNet vessel '{1}' to {2}", partInfo.name, this.Vessel.GetName(), inUse);
